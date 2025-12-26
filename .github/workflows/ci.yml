@@ -1,0 +1,78 @@
+name: CI - Test & Build
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Étape 1 — Récupération du code
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      # Étape 2 — Installer PHP + extensions nécessaires
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, intl, pdo_mysql
+          coverage: none
+
+      # Étape 3 — Installation des dépendances Composer
+      - name: Installer dépendances PHP
+        run: composer install --no-progress --prefer-dist --optimize-autoloader
+
+      # Étape 4 — Générer configuration Laravel
+      - name: Copier .env de test
+        run: cp .env.example .env
+
+      - name: Génération APP_KEY
+        run: php artisan key:generate
+
+      # Étape 5 — Base de données SQLite
+      - name: Préparer base SQLite
+        run: |
+          mkdir -p database
+          touch database/database.sqlite
+
+      # Étape 6 — Migration de la base
+      - name: Lancer les migrations
+        run: php artisan migrate --force
+
+      # Étape 7 — Lancer les tests PHPUnit
+      - name: Exécuter tests PHPUnit
+        run: php artisan test --without-tty
+
+      # Étape 8 (optionnelle) — Analyse de code via Laravel Pint
+      - name: Analyse code (Laravel Pint)
+        run: ./vendor/bin/pint --test
+        continue-on-error: true
+
+      # Étape 9 (optionnelle) — Build frontend si présent
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installer dépendances npm
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+          else
+            echo "Pas de package.json — skip npm"
+          fi
+        continue-on-error: true
+
+      - name: Build Frontend
+        run: |
+          if [ -f package.json ]; then
+            npm run build
+          else
+            echo "Pas de build frontend à exécuter"
+          fi
+        continue-on-error: true
